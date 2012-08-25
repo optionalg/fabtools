@@ -1,10 +1,15 @@
-*.egg/
+*.egg
 *.egg-info/
 .Python
+.tm_properties
+.tox/
 bin/
 build/
+dist/
 include/
 lib/
 man/
-tests/.vagrant
+share/
+fabtools/tests/.vagrant
+fabtools/tests/Vagrantfile
 *.pyc

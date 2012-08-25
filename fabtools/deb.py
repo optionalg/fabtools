@@ -1,21 +1,31 @@
 """
 Fabric tools for managing Debian/Ubuntu packages
 """
+from __future__ import with_statement
+
 from fabric.api import *
 
 
-def update_index():
+MANAGER = 'apt-get'
+
+
+def update_index(quiet=True):
     """
     Quietly update package index
     """
-    sudo("aptitude -q -q update")
+    options = "-q -q" if quiet else ""
+    sudo("%s %s update" % (MANAGER, options))
 
 
-def upgrade():
+def upgrade(safe=True):
     """
     Upgrade all packages
     """
-    sudo("aptitude --assume-yes safe-upgrade")
+    manager = MANAGER
+    cmds = {'apt-get': {False: 'dist-upgrade', True: 'upgrade'},
+            'aptitude': {False: 'full-upgrade', True: 'safe-upgrade'}}
+    cmd = cmds[manager][safe]
+    sudo("%(manager)s --assume-yes %(cmd)s" % locals())
 
 
 def is_installed(pkg_name):
@@ -36,6 +46,7 @@ def install(packages, update=False, options=None):
     """
     Install .deb package(s)
     """
+    manager = MANAGER
     if update:
         update_index()
     if options is None:
@@ -44,7 +55,22 @@ def install(packages, update=False, options=None):
         packages = " ".join(packages)
     options.append("--assume-yes")
     options = " ".join(options)
-    sudo('aptitude install %(options)s %(packages)s' % locals())
+    sudo('%(manager)s install %(options)s %(packages)s' % locals())
+
+
+def uninstall(packages, purge=False, options=None):
+    """
+    Remove .deb package(s)
+    """
+    manager = MANAGER
+    command = "purge" if purge else "remove"
+    if options is None:
+        options = []
+    if not isinstance(packages, basestring):
+        packages = " ".join(packages)
+    options.append("--assume-yes")
+    options = " ".join(options)
+    sudo('%(manager)s %(command)s %(options)s %(packages)s' % locals())
 
 
 def preseed_package(pkg_name, preseed):
@@ -54,3 +80,34 @@ def preseed_package(pkg_name, preseed):
     for q_name, _ in preseed.items():
         q_type, q_answer = _
         sudo('echo "%(pkg_name)s %(q_name)s %(q_type)s %(q_answer)s" | debconf-set-selections' % locals())
+
+
+def get_selections():
+    """
+    Get the state of dkpg selections
+    Returns dict with state => [packages]
+    """
+    with settings(hide('stdout')):
+        res = sudo('dpkg --get-selections')
+    selections = dict()
+    for line in res.splitlines():
+        package, status = line.split()
+        selections.setdefault(status, list()).append(package)
+    return selections
+
+
+def distrib_codename():
+    """
+    Get the codename of the distrib
+    """
+    with settings(hide('running', 'stdout')):
+        return run('lsb_release --codename --short')
+
+
+def add_apt_key(filename, update=True):
+    """
+    Add an APT key
+    """
+    sudo('apt-key add %(filename)s' % locals())
+    if update:
+        update_index()

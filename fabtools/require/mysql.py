@@ -1,15 +1,17 @@
 """
 Idempotent API for managing MySQL users and databases
 """
+from __future__ import with_statement
+
 from fabtools.mysql import *
 from fabtools.deb import is_installed, preseed_package
-from fabtools.icanhaz.deb import package
-from fabtools.icanhaz.service import started
+from fabtools.require.deb import package
+from fabtools.require.service import started
 
 
 def server(version='5.1', password=None):
     """
-    I can haz MySQL server
+    Require a MySQL server
     """
     if not is_installed("mysql-server-%s" % version):
         if password is None:
@@ -28,7 +30,7 @@ def server(version='5.1', password=None):
 
 def user(name, password, **kwargs):
     """
-    I can haz MySQL user
+    Require a MySQL user
     """
     if not user_exists(name, **kwargs):
         create_user(name, password, **kwargs)
@@ -36,7 +38,7 @@ def user(name, password, **kwargs):
 
 def database(name, **kwargs):
     """
-    I can haz MySQL database
+    Require a MySQL database
     """
     if not database_exists(name, **kwargs):
         create_database(name, **kwargs)

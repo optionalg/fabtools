@@ -4,18 +4,22 @@ Idempotent API for managing users
 from fabtools.files import is_file
 from fabtools.user import *
 
+import fabtools.require
 
-def user(name):
+
+def user(name, home=None):
     """
-    I can haz user
+    Require a user
     """
     if not exists(name):
-        create(name)
+        create(name, home=home)
+    if home:
+        fabtools.require.directory(home, owner=name, use_sudo=True)
 
 
 def sudoer(username, hosts="ALL", operators="ALL", passwd=False, commands="ALL"):
     """
-    I can haz sudo permissions for that user
+    Require sudo permissions for a given user
     """
     tags = "PASSWD:" if passwd else "NOPASSWD:"
     spec = "%(username)s %(hosts)s=(%(operators)s) %(tags)s %(commands)s" % locals()
