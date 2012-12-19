@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import time
 
 from fabric.api import *
@@ -6,13 +8,17 @@ from fabtools import require
 
 import fabtools
 
-from fabtools.vagrant import vagrant
 from fabtools.openvz import guest
 from fabtools.require.openvz import container
 
 
 @task
 def test_openvz():
+
+    # Skip test if the kernel does not support OpenVZ
+    if not fabtools.files.is_dir('/proc/vz'):
+        return
+
     setup_networking()
     setup_containers()
 
@@ -40,7 +46,7 @@ def setup_firewall():
 
     zones = [
         {
-            'NAME': 'fw',
+            'name': 'fw',
             'type': 'firewall',
         },
         {

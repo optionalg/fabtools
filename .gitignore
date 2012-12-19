@@ -6,6 +6,7 @@
 bin/
 build/
 dist/
+docs/_build/
 include/
 lib/
 man/
@@ -13,3 +14,4 @@ share/
 fabtools/tests/.vagrant
 fabtools/tests/Vagrantfile
 *.pyc
+*.swp

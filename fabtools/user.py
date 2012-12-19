@@ -1,5 +1,6 @@
 """
-Fabric tools for managing users
+Users
+=====
 """
 from __future__ import with_statement
 
@@ -8,15 +9,24 @@ from fabric.api import *
 
 def exists(name):
     """
-    Check if user exists
+    Check if a user exists.
     """
     with settings(hide('running', 'stdout', 'warnings'), warn_only=True):
-        return sudo('getent passwd %(name)s' % locals()).succeeded
+        return run('getent passwd %(name)s' % locals()).succeeded
 
 
-def create(name, home=None, shell=None, uid=None, gid=None, groups=None):
+def create(name, home=None, shell=None, uid=None, gid=None, groups=None,
+           gecos=None, disabled_password=False, disabled_login=False):
     """
-    Create a new user
+    Create a new user.
+
+    Example::
+
+        import fabtools
+
+        if not fabtools.user.exists('alice'):
+            fabtools.user.create('alice', home='/home/alice')
+
     """
     options = []
     if gid:
@@ -28,8 +38,14 @@ def create(name, home=None, shell=None, uid=None, gid=None, groups=None):
     if home:
         options.append('--home-dir "%s"' % home)
     if shell:
-        options.append('--shell "%s"' % (shell))
+        options.append('--shell "%s"' % shell)
     if uid:
         options.append('--uid %s' % uid)
+    if gecos:
+        options.append('--gecos "%s"' % gecos)
+    if disabled_password:
+        options.append('--disabled-password')
+    if disabled_login:
+        options.append('--disabled-login')
     options = " ".join(options)
     sudo('useradd %(options)s %(name)s' % locals())
