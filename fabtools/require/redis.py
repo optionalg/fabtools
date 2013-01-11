@@ -11,15 +11,17 @@ from __future__ import with_statement
 
 from fabtools.files import is_file, watch
 from fabtools.deb import *
+import fabtools.supervisor
 
 
-VERSION = '2.4.17'
+VERSION = '2.6.7'
 
 BINARIES = [
     'redis-benchmark',
     'redis-check-aof',
     'redis-check-dump',
     'redis-cli',
+    'redis-sentinel',
     'redis-server',
 ]
 
@@ -32,7 +34,7 @@ def installed_from_source(version=VERSION):
     """
     from fabtools import require
 
-    require.user('redis')
+    require.user('redis', home='/var/lib/redis')
 
     dest_dir = '/opt/redis-%(version)s' % locals()
     require.directory(dest_dir, use_sudo=True, owner='redis')

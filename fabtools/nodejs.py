@@ -21,7 +21,7 @@ except ImportError:
 from fabric.api import run, sudo, cd, settings, hide
 
 
-DEFAULT_VERSION = '0.8.11'
+DEFAULT_VERSION = '0.8.16'
 
 
 def install_from_source(version=DEFAULT_VERSION):
@@ -48,11 +48,17 @@ def install_from_source(version=DEFAULT_VERSION):
     filename = 'node-v%s.tar.gz' % version
     foldername = filename[0:-7]
 
-    run('wget http://nodejs.org/dist/v%(version)s/%(filename)s' % locals())
+    res = run('python -c "import multiprocessing ; print(multiprocessing.cpu_count())"')
+    cpus = int(res)
+
+    require.file(url='http://nodejs.org/dist/v%(version)s/%(filename)s' % {
+        'version': version,
+        'filename': filename,
+    })
     run('tar -xzf %s' % filename)
     with cd(foldername):
         run('./configure')
-        run('make')
+        run('make -j%d' % (cpus + 1))
         sudo('make install')
     run('rm -rf %(filename)s %(foldername)s' % locals())
 

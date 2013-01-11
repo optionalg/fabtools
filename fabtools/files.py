@@ -8,6 +8,7 @@ import os.path
 
 from fabric.api import *
 from fabric.contrib.files import upload_template as _upload_template
+from fabric.contrib.files import exists
 
 
 def is_file(path, use_sudo=False):
@@ -42,8 +43,15 @@ def owner(path, use_sudo=False):
     Get the owner name of a file or directory.
     """
     func = use_sudo and sudo or run
-    with settings(hide('running', 'stdout')):
-        return func('stat -c %%U "%(path)s"' % locals())
+    # I'd prefer to use quiet=True, but that's not supported with older
+    # versions of Fabric.
+    with settings(hide('running', 'stdout'), warn_only=True):
+        result = func('stat -c %%U "%(path)s"' % locals())
+        if result.failed and 'stat: illegal option' in result:
+            # Try the BSD version of stat
+            return func('stat -f %%Su "%(path)s"' % locals())
+        else:
+            return result
 
 
 def group(path, use_sudo=False):
@@ -51,8 +59,15 @@ def group(path, use_sudo=False):
     Get the group name of a file or directory.
     """
     func = use_sudo and sudo or run
-    with settings(hide('running', 'stdout')):
-        return func('stat -c %%G "%(path)s"' % locals())
+    # I'd prefer to use quiet=True, but that's not supported with older
+    # versions of Fabric.
+    with settings(hide('running', 'stdout'), warn_only=True):
+        result = func('stat -c %%G "%(path)s"' % locals())
+        if result.failed and 'stat: illegal option' in result:
+            # Try the BSD version of stat
+            return func('stat -f %%Sg "%(path)s"' % locals())
+        else:
+            return result
 
 
 def mode(path, use_sudo=False):
@@ -63,8 +78,15 @@ def mode(path, use_sudo=False):
     an octal number.
     """
     func = use_sudo and sudo or run
-    with settings(hide('running', 'stdout')):
-        return func('stat -c %%a "%(path)s"' % locals())
+    # I'd prefer to use quiet=True, but that's not supported with older
+    # versions of Fabric.
+    with settings(hide('running', 'stdout'), warn_only=True):
+        result = func('stat -c %%a "%(path)s"' % locals())
+        if result.failed and 'stat: illegal option' in result:
+            # Try the BSD version of stat
+            return func('stat -f %%Op "%(path)s"|cut -c 4-6' % locals())
+        else:
+            return result
 
 
 def upload_template(filename, template, context=None, use_sudo=False,
@@ -90,11 +112,23 @@ def md5sum(filename, use_sudo=False):
     """
     func = use_sudo and sudo or run
     with settings(hide('running', 'stdout', 'stderr', 'warnings'), warn_only=True):
-        res = func('md5sum %(filename)s' % locals())
-    if res.failed:
+        # Linux (LSB)
+        if exists(u'/usr/bin/md5sum'):
+            res = func(u'/usr/bin/md5sum %(filename)s' % locals())
+        # BSD / OS X
+        elif exists(u'/sbin/md5'):
+            res = func(u'/sbin/md5 -r %(filename)s' % locals())
+        else:
+            abort('No MD5 utility was found on this system.')
+
+    if res.succeeded:
+        parts = res.split()
+        _md5sum = len(parts) > 0 and parts[0] or None
+    else:
         warn(res)
-        return None
-    return res.split()[0]
+        _md5sum = None
+
+    return _md5sum
 
 
 class watch(object):
