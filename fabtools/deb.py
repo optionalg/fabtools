@@ -6,20 +6,22 @@ This module provides tools to manage Debian/Ubuntu packages
 and repositories.
 
 """
-from __future__ import with_statement
 
-from fabric.api import *
+from fabric.api import hide, run, settings
+
+from fabtools.utils import run_as_root
+from fabtools.files import getmtime, is_file
 
 
-MANAGER = 'apt-get'
+MANAGER = 'DEBIAN_FRONTEND=noninteractive apt-get'
 
 
 def update_index(quiet=True):
     """
     Update APT package definitions.
     """
-    options = "-q -q" if quiet else ""
-    sudo("%s %s update" % (MANAGER, options))
+    options = "--quiet --quiet" if quiet else ""
+    run_as_root("%s %s update" % (MANAGER, options))
 
 
 def upgrade(safe=True):
@@ -27,10 +29,11 @@ def upgrade(safe=True):
     Upgrade all packages.
     """
     manager = MANAGER
-    cmds = {'apt-get': {False: 'dist-upgrade', True: 'upgrade'},
-            'aptitude': {False: 'full-upgrade', True: 'safe-upgrade'}}
-    cmd = cmds[manager][safe]
-    sudo("%(manager)s --assume-yes %(cmd)s" % locals())
+    if safe:
+        cmd = 'upgrade'
+    else:
+        cmd = 'dist-upgrade'
+    run_as_root("%(manager)s --assume-yes %(cmd)s" % locals(), pty=False)
 
 
 def is_installed(pkg_name):
@@ -47,7 +50,7 @@ def is_installed(pkg_name):
         return False
 
 
-def install(packages, update=False, options=None):
+def install(packages, update=False, options=None, version=None):
     """
     Install one or more packages.
 
@@ -69,18 +72,26 @@ def install(packages, update=False, options=None):
             'libxml2-dev',
         ])
 
+        # Install a specific version
+        fabtools.deb.install('emacs', version='23.3+1-1ubuntu9')
+
     """
     manager = MANAGER
     if update:
         update_index()
     if options is None:
         options = []
+    if version is None:
+        version = ''
+    if version and not isinstance(packages, list):
+        version = '=' + version
     if not isinstance(packages, basestring):
         packages = " ".join(packages)
     options.append("--quiet")
     options.append("--assume-yes")
     options = " ".join(options)
-    sudo('%(manager)s install %(options)s %(packages)s' % locals())
+    cmd = '%(manager)s install %(options)s %(packages)s%(version)s' % locals()
+    run_as_root(cmd, pty=False)
 
 
 def uninstall(packages, purge=False, options=None):
@@ -100,7 +111,8 @@ def uninstall(packages, purge=False, options=None):
         packages = " ".join(packages)
     options.append("--assume-yes")
     options = " ".join(options)
-    sudo('%(manager)s %(command)s %(options)s %(packages)s' % locals())
+    cmd = '%(manager)s %(command)s %(options)s %(packages)s' % locals()
+    run_as_root(cmd, pty=False)
 
 
 def preseed_package(pkg_name, preseed):
@@ -123,7 +135,7 @@ def preseed_package(pkg_name, preseed):
     """
     for q_name, _ in preseed.items():
         q_type, q_answer = _
-        sudo('echo "%(pkg_name)s %(q_name)s %(q_type)s %(q_answer)s" | debconf-set-selections' % locals())
+        run_as_root('echo "%(pkg_name)s %(q_name)s %(q_type)s %(q_answer)s" | debconf-set-selections' % locals())
 
 
 def get_selections():
@@ -133,7 +145,7 @@ def get_selections():
     Returns a dict with state => [packages].
     """
     with settings(hide('stdout')):
-        res = sudo('dpkg --get-selections')
+        res = run_as_root('dpkg --get-selections')
     selections = dict()
     for line in res.splitlines():
         package, status = line.split()
@@ -141,23 +153,26 @@ def get_selections():
     return selections
 
 
-def distrib_codename():
+def apt_key_exists(keyid):
     """
-    Get the codename of the distrib.
-
-    Example::
-
-        from fabtools.deb import distrib_codename
-
-        if distrib_codename() == 'precise':
-            print('Ubuntu 12.04 LTS')
-
+    Check if the given key id exists in apt keyring.
     """
-    with settings(hide('running', 'stdout')):
-        return run('lsb_release --codename --short')
+
+    # Command extracted from apt-key source
+    gpg_cmd = 'gpg --ignore-time-conflict --no-options --no-default-keyring --keyring /etc/apt/trusted.gpg'
+
+    with settings(hide('everything'), warn_only=True):
+        res = run('%(gpg_cmd)s --fingerprint %(keyid)s' % locals())
+
+    return res.succeeded
 
 
-def add_apt_key(filename, update=True):
+def _check_pgp_key(path, keyid):
+    with settings(hide('everything')):
+        return not run('gpg --with-colons %(path)s | cut -d: -f 5 | grep -q \'%(keyid)s$\'' % locals())
+
+
+def add_apt_key(filename=None, url=None, keyid=None, keyserver='subkeys.pgp.net', update=False):
     """
     Trust packages signed with this public key.
 
@@ -165,14 +180,60 @@ def add_apt_key(filename, update=True):
 
         import fabtools
 
-        # Download 3rd party APT public key
-        if not fabtools.is_file('rabbitmq-signing-key-public.asc'):
-            run('wget http://www.rabbitmq.com/rabbitmq-signing-key-public.asc')
+        # Varnish signing key from URL and verify fingerprint)
+        fabtools.deb.add_apt_key(keyid='C4DEFFEB', url='http://repo.varnish-cache.org/debian/GPG-key.txt')
 
-        # Tell APT to trust that key
-        fabtools.deb.add_apt_key('rabbitmq-signing-key-public.asc')
+        # Nginx signing key from default key server (subkeys.pgp.net)
+        fabtools.deb.add_apt_key(keyid='7BD9BF62')
 
+        # From custom key server
+        fabtools.deb.add_apt_key(keyid='7BD9BF62', keyserver='keyserver.ubuntu.com')
+
+        # From a file
+        fabtools.deb.add_apt_key(keyid='7BD9BF62', filename='nginx.asc'
     """
-    sudo('apt-key add %(filename)s' % locals())
+
+    if keyid is None:
+        if filename is not None:
+            run_as_root('apt-key add %(filename)s' % locals())
+        elif url is not None:
+            run_as_root('wget %(url)s -O - | apt-key add -' % locals())
+        else:
+            raise ValueError('Either filename, url or keyid must be provided as argument')
+    else:
+        if filename is not None:
+            _check_pgp_key(filename, keyid)
+            run_as_root('apt-key add %(filename)s' % locals())
+        elif url is not None:
+            tmp_key = '/tmp/tmp.fabtools.key.%(keyid)s.key' % locals()
+            run_as_root('wget %(url)s -O %(tmp_key)s' % locals())
+            _check_pgp_key(tmp_key, keyid)
+            run_as_root('apt-key add %(tmp_key)s' % locals())
+        else:
+            keyserver_opt = '--keyserver %(keyserver)s' % locals() if keyserver is not None else ''
+            run_as_root('apt-key adv %(keyserver_opt)s --recv-keys %(keyid)s' % locals())
+
     if update:
         update_index()
+
+
+def last_update_time():
+    """
+    Get the time of last APT index update
+
+    This is the last modification time of ``/var/lib/apt/periodic/fabtools-update-success-stamp``.
+
+    Returns ``-1`` if there was no update before.
+
+    Example::
+
+        import fabtools
+
+        print(fabtools.deb.last_update_time())
+        # 1377603808.02
+
+    """
+    STAMP = '/var/lib/apt/periodic/fabtools-update-success-stamp'
+    if not is_file(STAMP):
+        return -1
+    return getmtime(STAMP)

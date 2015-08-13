@@ -10,10 +10,11 @@ and containers.
 .. warning:: The remote host needs a patched kernel with OpenVZ support.
 
 """
-import os.path
 
-from fabtools.files import is_file
+import os
+
 from fabtools import openvz
+from fabtools.files import is_file
 from fabtools.openvz.container import Container
 
 

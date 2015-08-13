@@ -2,11 +2,10 @@
 Groups
 ======
 """
-from __future__ import with_statement
 
-from pipes import quote
+from fabric.api import hide, run, settings
 
-from fabric.api import *
+from fabtools.utils import run_as_root
 
 
 def exists(name):
@@ -32,7 +31,7 @@ def create(name, gid=None):
 
     args = []
     if gid:
-        args.append('-g %s' % quote(gid))
+        args.append('-g %s' % gid)
     args.append(name)
     args = ' '.join(args)
-    sudo('groupadd %s' % args)
+    run_as_root('groupadd %s' % args)
